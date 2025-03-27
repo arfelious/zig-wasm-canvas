@@ -1,8 +1,6 @@
 const std = @import("std");
-
 extern fn consoleLog(arg: u32) void;
 extern fn jsRand(max: u16, limit: bool) u16;
-
 var randX: u16 = undefined;
 var randY: u16 = undefined;
 var canvas_buffer = std.mem.zeroes([720 * 720 * 4]u8);

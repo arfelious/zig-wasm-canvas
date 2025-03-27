@@ -1,12 +1,11 @@
-
-let wanderer = {create:function(){
+let gameOfLife = {create:function(){
     const DEFAULT_COLOR_NUM = 0x0099ff
     const DEFAULT_COLOR = "#ff9900"
     let noop = ()=>{}
     let options = {}
     options.onInstantiate = noop
     let toNum = (arr)=>arr[0]+arr[1]*256+arr[2]*256*256
-    let inputValues = {"iterationCount":10000,"intendedCount":1000,"intendedWidth":120,"intendedHeight":120,"goalWidth":360,"goalHeight":360,"color":DEFAULT_COLOR_NUM}
+    let inputValues = {"iterationCount":100,"size":120,"filledRatio":20,"color":DEFAULT_COLOR_NUM}
     let defaultvalues = {...inputValues}
     let restartAnimation = ()=>{
         if(wasmCanvas.memory){
@@ -35,66 +34,49 @@ let wanderer = {create:function(){
                 }
             })
         }
+        setColor()
+        fillRandom()
     }
+    let activateCell = noop
+    let fillRandom = noop
     options.inputs=[{
         type:"slider",
         scale:"log",
         min:1,
-        max:1e6,
-        value:1e4,
+        max:1000,
+        value:100,
         label:"Iteration Count",
         id:"iterationCount"
     },
     {
         type:"slider",
-        scale:"log",
+        scale:"normal",
         min:1,
-        max:1e4,
-        value:1000,
-        label:"Intended Count",
-        id:"intendedCount"
+        max:100,
+        value:20,
+        label:"Filled Ratio",
+        id:"filledRatio"
     },
     {
         type:"slider",
-        scale:"log",
+        scale:"normal",
         min:1,
-        max:720,
+        max:250,
         value:120,
-        label:"Intended Width",
-        id:"intendedWidth"
-    },
-    {
-        type:"slider",
-        scale:"log",
-        min:1,
-        max:720,
-        value:120,
-        label:"Intended Height",
-        id:"intendedHeight"
-    },
-    {
-        type:"slider",
-        scale:"log",
-        min:1,
-        max:1e3,
-        value:360,
-        label:"Goal Width",
-        id:"goalWidth"
-    },
-    {
-        type:"slider",
-        scale:"log",
-        min:1,
-        max:1e3,
-        value:360,
-        label:"Goal Height",
-        id:"goalHeight"
+        label:"Size",
+        id:"size"
     },
     {
         type:"text",
         value:DEFAULT_COLOR,
         label:"Color",
         id:"color"
+    },{
+        type:"button",
+        label:"Restart",
+        id:"restart",
+        onChange:restartAnimation
+    
     },{
         type:"button",
         label:"Reset",
@@ -106,22 +88,32 @@ let wanderer = {create:function(){
             restartAnimation()
         }
     },{
-        type:"button",
-        label:"Restart",
-        id:"restart",
-        onChange:restartAnimation
-    
+        type:"touch",
+        label:null,
+        id:"touch",
+        onChange:(val)=>{
+            let x = val.x/canvas.width
+            let y = val.y/canvas.height
+            let i = Math.floor(x*inputValues.size)
+            let j = Math.floor(y*inputValues.size)
+            let index = i+j*inputValues.size
+            activateCell(index)
+            placeImage()
+        }
     }
     ]
     options.isWasm=true
     options.canvasCount = 1
-    options.title="Wanderer"
+    options.title="Game of Life"
     let wasmOptions = {}
-    wasmOptions.pageCount = 128
-    wasmOptions.url="/interactive/zig/wanderer/zig-out/bin/interactive.wasm"
+    wasmOptions.pageCount = 64
+    wasmOptions.url="/interactive/zig/game_of_life/zig-out/bin/interactive.wasm"
     wasmOptions.importObject = {jsRand:(max,limit)=>limit?Math.floor(Math.random()*(max-2))+1:Math.floor(Math.random()*max)}
     let wasmCanvas = {memory:null,offset:null}
     let canvas=null,context = null
+    let counter = 0
+    let placeImage = noop
+    let setColor = noop
     wasmOptions.onInstantiate=(canvasArr,instance,memory,state,eventLoops)=>{
         const wasmMemoryArray = new Uint8Array(memory.buffer);
         canvas = canvasArr[0]
@@ -130,19 +122,40 @@ let wanderer = {create:function(){
         const bufferOffset = instance.exports.getCanvasBufferPointer();
         wasmCanvas.memory = wasmMemoryArray
         wasmCanvas.offset = bufferOffset
+        placeImage = async ()=>{
+            let imageDataArray = new Uint8ClampedArray(wasmCanvas.memory.slice(bufferOffset, bufferOffset + inputValues.size**2*4))
+            let tempBitmap = await window.createImageBitmap(new ImageData(imageDataArray,inputValues.size,inputValues.size))
+            context.drawImage(tempBitmap,0,0,360,360)
+        }
+        fillRandom = ()=>{
+            let filledRatio = inputValues.filledRatio||defaultvalues.filledRatio
+            instance.exports.fillRandom(filledRatio,inputValues.size)
+            placeImage()
+        }
+        setColor = ()=>{
+            instance.exports.setColor(inputValues.color)
+        }
+        setColor()
+        fillRandom()
+        let lastColor = inputValues.color
         const draw = async ()=>{
             if(!state.isPlaying)return
-            let iterationCount = inputValues.iterationCount||10000
-            let intendedCount = inputValues.intendedCount||1000
-            let intendedWidth = inputValues.intendedWidth||120
-            let intendedHeight = inputValues.intendedHeight||120
-            let goalWidth = inputValues.goalWidth||360
-            let goalHeight = inputValues.goalHeight||360
+            let iterationCount = inputValues.iterationCount||defaultvalues.iterationCount
+            let mappedIterationCount = iterationCount/100
+            counter++
+            let inverse = Math.floor(1/mappedIterationCount)
+            if(mappedIterationCount<1){
+                //console.log("iterationCount",counter,inverse,counter%inverse)
+                if(counter%inverse!=0)return
+            }
+            let size = inputValues.size||defaultvalues.size
             let colorNum = inputValues.color||defaultvalues.color
-            instance.exports.iterate(intendedCount,iterationCount,intendedWidth,intendedHeight,colorNum)
-            let imageDataArray = new Uint8ClampedArray(wasmMemoryArray.slice(bufferOffset, bufferOffset + intendedWidth * intendedHeight * 4));
-            let tempBitmap = await window.createImageBitmap(new ImageData(imageDataArray,intendedWidth,intendedHeight))
-            context.drawImage(tempBitmap,0,0,goalWidth,goalHeight)
+            if(colorNum!=lastColor){
+                instance.exports.setColor(colorNum)
+                lastColor = colorNum
+            }
+            instance.exports.iterate(mappedIterationCount,size,colorNum)
+            placeImage()
         }
         eventLoops.push(draw)
     
