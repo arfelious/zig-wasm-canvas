@@ -4,37 +4,12 @@ let wanderer = {create:function(){
     const DEFAULT_COLOR = "#ff9900"
     let noop = ()=>{}
     let options = {}
+    options.DEFAULT_COLOR = DEFAULT_COLOR
     options.onInstantiate = noop
-    let toNum = (arr)=>arr[0]+arr[1]*256+arr[2]*256*256
     let inputValues = {"iterationCount":10000,"intendedCount":1000,"intendedWidth":120,"intendedHeight":120,"goalWidth":360,"goalHeight":360,"color":DEFAULT_COLOR_NUM}
-    let defaultvalues = {...inputValues}
+    let defaultValues = {...inputValues}
     let restartAnimation = ()=>{
-        if(wasmCanvas.memory){
-            wasmCanvas.memory.fill(0)
-            context.clearRect(0,0,canvas.width,canvas.height)
-        }
-        if(typeof options.inputElements!==undefined){
-            options.inputElements.forEach(([element,input])=>{
-                console.log(input.type)
-                if(input.type=="slider"){
-                    inputValues[input.id] = element.value
-                }
-                if(input.type=="text"){
-                    inputValues[input.id] = element.value
-                    if(input.id=="color"){
-                        let val = element.value
-                        if(element.value.length==4){
-                            let c = element.value.slice(1)
-                            val = "#"+c[0]+c[0]+c[1]+c[1]+c[2]+c[2]
-                        }
-                        if(val.length!=7||val[0]!="#"){
-                            element.value = val= DEFAULT_COLOR
-                        }
-                        inputValues.color = toNum(val.slice(1).match(/.{2}/g).map(val=>parseInt(val,16)))
-                    }
-                }
-            })
-        }
+        resetCanvas(wasmCanvas,inputValues,context,canvas,options)
     }
     options.inputs=[{
         type:"slider",
@@ -43,7 +18,10 @@ let wanderer = {create:function(){
         max:1e6,
         value:1e4,
         label:"Iteration Count",
-        id:"iterationCount"
+        id:"iterationCount",
+        onChange:(ev)=>{
+            inputValues.iterationCount = ev.target.value
+        }
     },
     {
         type:"slider",
@@ -97,20 +75,21 @@ let wanderer = {create:function(){
         id:"color"
     },{
         type:"button",
-        label:"Reset",
-        id:"reset",
-        onChange:(val)=>{
-            options.inputElements.forEach(([element,input])=>{
-                element.value = defaultvalues[input.id]
-            })
-            restartAnimation()
-        }
-    },{
-        type:"button",
         label:"Restart",
         id:"restart",
         onChange:restartAnimation
     
+    },{
+        type:"button",
+        label:"Reset",
+        id:"reset",
+        onChange:(val)=>{
+            options.inputElements.forEach(([element,input])=>{
+                element.value = defaultValues[input.id]
+            })
+            inputValues = {...defaultValues}
+            restartAnimation()
+        }
     }
     ]
     options.isWasm=true
@@ -138,7 +117,7 @@ let wanderer = {create:function(){
             let intendedHeight = inputValues.intendedHeight||120
             let goalWidth = inputValues.goalWidth||360
             let goalHeight = inputValues.goalHeight||360
-            let colorNum = inputValues.color||defaultvalues.color
+            let colorNum = inputValues.color||defaultValues.color
             instance.exports.iterate(intendedCount,iterationCount,intendedWidth,intendedHeight,colorNum)
             let imageDataArray = new Uint8ClampedArray(wasmMemoryArray.slice(bufferOffset, bufferOffset + intendedWidth * intendedHeight * 4));
             let tempBitmap = await window.createImageBitmap(new ImageData(imageDataArray,intendedWidth,intendedHeight))

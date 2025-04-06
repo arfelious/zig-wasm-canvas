@@ -1,39 +1,16 @@
 let gameOfLife = {create:function(){
     const DEFAULT_COLOR_NUM = 0x0099ff
     const DEFAULT_COLOR = "#ff9900"
+    const CANVAS_WIDTH = 360
+    const CANVAS_HEIGHT = 360
     let noop = ()=>{}
     let options = {}
     options.onInstantiate = noop
-    let toNum = (arr)=>arr[0]+arr[1]*256+arr[2]*256*256
-    let inputValues = {"iterationCount":100,"size":120,"filledRatio":20,"color":DEFAULT_COLOR_NUM}
-    let defaultvalues = {...inputValues}
+    options.DEFAULT_COLOR = DEFAULT_COLOR
+    let inputValues = {"iterationCount":30,"size":120,"filledRatio":20,"color":DEFAULT_COLOR_NUM}
+    let defaultValues = {...inputValues}
     let restartAnimation = ()=>{
-        if(wasmCanvas.memory){
-            wasmCanvas.memory.fill(0)
-            context.clearRect(0,0,canvas.width,canvas.height)
-        }
-        if(typeof options.inputElements!==undefined){
-            options.inputElements.forEach(([element,input])=>{
-                console.log(input.type)
-                if(input.type=="slider"){
-                    inputValues[input.id] = element.value
-                }
-                if(input.type=="text"){
-                    inputValues[input.id] = element.value
-                    if(input.id=="color"){
-                        let val = element.value
-                        if(element.value.length==4){
-                            let c = element.value.slice(1)
-                            val = "#"+c[0]+c[0]+c[1]+c[1]+c[2]+c[2]
-                        }
-                        if(val.length!=7||val[0]!="#"){
-                            element.value = val= DEFAULT_COLOR
-                        }
-                        inputValues.color = toNum(val.slice(1).match(/.{2}/g).map(val=>parseInt(val,16)))
-                    }
-                }
-            })
-        }
+        resetCanvas(wasmCanvas,inputValues,context,canvas,options)
         setColor()
         fillRandom()
     }
@@ -43,10 +20,13 @@ let gameOfLife = {create:function(){
         type:"slider",
         scale:"log",
         min:1,
-        max:1000,
-        value:100,
+        max:750,
+        value:30,
         label:"Iteration Count",
-        id:"iterationCount"
+        id:"iterationCount",
+        onChange:(ev)=>{
+            inputValues.iterationCount = ev.target.value
+        }
     },
     {
         type:"slider",
@@ -83,22 +63,26 @@ let gameOfLife = {create:function(){
         id:"reset",
         onChange:(val)=>{
             options.inputElements.forEach(([element,input])=>{
-                element.value = defaultvalues[input.id]
+                element.value = defaultValues[input.id]
             })
+            inputValues = {...defaultValues}
             restartAnimation()
         }
     },{
-        type:"touch",
+        type:"touch-move",
         label:null,
         id:"touch",
-        onChange:(val)=>{
-            let x = val.x/canvas.width
-            let y = val.y/canvas.height
+        onChange:(coords,isClicked)=>{
+            let {x,y} = coords
+            x/=CANVAS_WIDTH
+            y/=CANVAS_HEIGHT
             let i = Math.floor(x*inputValues.size)
             let j = Math.floor(y*inputValues.size)
-            let index = i+j*inputValues.size
-            activateCell(index)
-            placeImage()
+            let index = (i+j*inputValues.size)*4
+            if(isClicked){
+                activateCell(index)
+                placeImage()
+            }
         }
     }
     ]
@@ -125,31 +109,33 @@ let gameOfLife = {create:function(){
         placeImage = async ()=>{
             let imageDataArray = new Uint8ClampedArray(wasmCanvas.memory.slice(bufferOffset, bufferOffset + inputValues.size**2*4))
             let tempBitmap = await window.createImageBitmap(new ImageData(imageDataArray,inputValues.size,inputValues.size))
-            context.drawImage(tempBitmap,0,0,360,360)
+            context.drawImage(tempBitmap,0,0,CANVAS_WIDTH,CANVAS_HEIGHT)
         }
         fillRandom = ()=>{
-            let filledRatio = inputValues.filledRatio||defaultvalues.filledRatio
+            let filledRatio = inputValues.filledRatio||defaultValues.filledRatio
             instance.exports.fillRandom(filledRatio,inputValues.size)
             placeImage()
         }
         setColor = ()=>{
             instance.exports.setColor(inputValues.color)
         }
+        activateCell = (index)=>{
+            instance.exports.activateCell(index)
+        }
         setColor()
         fillRandom()
         let lastColor = inputValues.color
         const draw = async ()=>{
             if(!state.isPlaying)return
-            let iterationCount = inputValues.iterationCount||defaultvalues.iterationCount
+            let iterationCount = inputValues.iterationCount||defaultValues.iterationCount
             let mappedIterationCount = iterationCount/100
-            counter++
             let inverse = Math.floor(1/mappedIterationCount)
             if(mappedIterationCount<1){
-                //console.log("iterationCount",counter,inverse,counter%inverse)
+                counter++
                 if(counter%inverse!=0)return
             }
-            let size = inputValues.size||defaultvalues.size
-            let colorNum = inputValues.color||defaultvalues.color
+            let size = inputValues.size||defaultValues.size
+            let colorNum = inputValues.color||defaultValues.color
             if(colorNum!=lastColor){
                 instance.exports.setColor(colorNum)
                 lastColor = colorNum

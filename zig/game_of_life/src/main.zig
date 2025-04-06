@@ -22,8 +22,18 @@ export fn activateCell(index: u32) void {
     temp_buffer[index + 1] = current_g;
     temp_buffer[index + 2] = current_b;
     temp_buffer[index + 3] = 255;
+    canvas_buffer[index] = current_r;
+    canvas_buffer[index + 1] = current_g;
+    canvas_buffer[index + 2] = current_b;
+    canvas_buffer[index + 3] = 255;
 }
-pub fn deactivateCell(index: u32) void {
+pub fn activate_cell(index: u32) void {
+    temp_buffer[index] = current_r;
+    temp_buffer[index + 1] = current_g;
+    temp_buffer[index + 2] = current_b;
+    temp_buffer[index + 3] = 255;
+}
+pub fn deactivate_cell(index: u32) void {
     temp_buffer[index] = 0;
     temp_buffer[index + 1] = 0;
     temp_buffer[index + 2] = 0;
@@ -37,15 +47,14 @@ export fn fillRandom(fillRatio: u16, size: u32) void {
             const index: u32 = (x + y * size) * 4;
             const rand = jsRand(100, false);
             if (rand < fillRatio) {
-                activateCell(index);
-            } else deactivateCell(index);
+                activate_cell(index);
+            } else deactivate_cell(index);
         }
     }
     @memcpy(&canvas_buffer, &temp_buffer);
 }
 export fn iterate(iteration_count: f32, size: u32) void {
     var i: f32 = 0;
-    consoleLog(321);
     while (i < iteration_count) : (i += 1) {
         var x: u32 = 0;
         while (x < size) : (x += 1) {
@@ -57,7 +66,7 @@ export fn iterate(iteration_count: f32, size: u32) void {
                 while (neighbour_x < 3) : (neighbour_x += 1) {
                     var neighbour_y: u8 = 0;
                     while (neighbour_y < 3) : (neighbour_y += 1) {
-                        if (neighbour_x == 1 and neighbour_y == 1) {
+                        if ((neighbour_x == 1 and neighbour_y == 1) or (y == 0 and neighbour_y == 0) or (y == size - 1 and neighbour_y == 2) or (x == 0 and neighbour_x == 0) or (x == size - 1 and neighbour_x == 2)) {
                             continue;
                         }
                         const neighbour_index: u32 = ((x + neighbour_x - 1) + (y + neighbour_y - 1) * size) * 4;
@@ -70,13 +79,12 @@ export fn iterate(iteration_count: f32, size: u32) void {
                 }
                 const is_dead = canvas_buffer[index] == bg_r and canvas_buffer[index + 1] == bg_g and canvas_buffer[index + 2] == bg_b;
                 if (is_dead and neighbour_count == 3) {
-                    activateCell(index);
+                    activate_cell(index);
                 } else if (!is_dead and (neighbour_count < 2 or neighbour_count > 3)) {
-                    deactivateCell(index);
+                    deactivate_cell(index);
                 }
             }
         }
-        consoleLog(123321);
         @memcpy(&canvas_buffer, &temp_buffer);
     }
 }

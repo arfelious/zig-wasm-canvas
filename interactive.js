@@ -1,7 +1,26 @@
 let interactiveCount = 0
 let eventLoops = []
-let createInputs = inputs=>{
+let createInputs = (inputs,canvasArr)=>{
     let elements = []
+    let isClicked = false
+    let canvas = canvasArr[0]
+    let touchListeners = []
+    let touchMoveFun = (input,evt)=>{
+        var rect = canvas.getBoundingClientRect();
+        let coords = {
+            x: (evt.clientX - rect.left) / (rect.right - rect.left) * canvas.offsetWidth,
+            y: (evt.clientY - rect.top) / (rect.bottom - rect.top) * canvas.offsetHeight
+        }
+        input.onChange(coords,isClicked,evt.type)
+    }
+    canvas.addEventListener('pointerdown',evt=>{
+        isClicked = true
+        touchListeners.forEach(e=>touchMoveFun(e,evt))
+    })
+    canvas.addEventListener('pointerup',evt=>{
+        isClicked = false
+        touchListeners.forEach(e=>touchMoveFun(e,evt))
+    })
     inputs.forEach(input=>{
         switch(input.type){
             case "slider":{
@@ -38,9 +57,27 @@ let createInputs = inputs=>{
                 elements.push([text,input,label])
                 break
             }
+            case "touch-end":
+            case "touch-move":{
+                canvasArr[0].style.touchAction = 'none'
+                canvasArr[0].style.cursor = 'pointer'
+                elements.push([canvasArr[0],input])
+            }
         }
-        let evName = input.type=='slider'?'input':input.type=='text'?'change':'click'
-        if(input.onChange)elements[elements.length-1][0].addEventListener(evName,input.onChange)
+        let evName = input.type=='slider'?'input':input.type=='text'?'change':input.type=="touch-move"?'pointermove'
+        :input.type=="touch-end"?'pointerup':'click'
+        let isTouch = input.type=="touch-move"||input.type=="touch-end"
+        if(isTouch){
+            touchListeners.push(input)
+        }
+        if(input.onChange)elements[elements.length-1][0].addEventListener(evName,(...args)=>{
+            if(isTouch){
+                let evt = args[0]
+                touchMoveFun(input,evt)
+            }else{
+                input.onChange(...args)
+            }
+        })
         
     })
 
@@ -100,7 +137,6 @@ let createInteractive = (parent=document.body,options,wasmOptions)=>{
     let element = document.querySelector('.interactive-input-container');
     let defaultInputsContainerHeight = window.getComputedStyle(element).getPropertyValue('max-height');
     optionsButton.onclick=()=>{
-        console.log(inputsContainer.style.height)
         inputsContainer.style.height=inputsContainer.style.height==defaultInputsContainerHeight?'0px':defaultInputsContainerHeight
     }
     if(options.title){
@@ -110,15 +146,52 @@ let createInteractive = (parent=document.body,options,wasmOptions)=>{
         container.appendChild(title)
     }
     options.inputs = options.inputs||[]
-    let inputs = createInputs(options.inputs)
+    let inputs = createInputs(options.inputs,res)
     options.inputElements = inputs
     for(let key in inputs){
         if(inputs[key][2]){
             inputsContainer.appendChild(inputs[key][2])
         }
-        inputsContainer.appendChild(inputs[key][0])
+        if(!res.includes(inputs[key][0])){
+            inputsContainer.appendChild(inputs[key][0])
+        }
     }
     return res
+}
+let toArr = str=>str.match(/[0-9a-f]{1,2}/gi).map(val=>parseInt(val,16))
+let toNum = (arr)=>arr[0]+arr[1]*256+arr[2]*256*256
+let toStr = arr=>"#"+arr.map(val=>val.toString(16).padStart(2,"0")).join("")
+let resetCanvas = (wasmCanvas,inputValues,context,canvas,options)=>{
+    if(wasmCanvas.memory){
+        if(!options.noClearMemory)wasmCanvas.memory.fill(0)
+        context.clearRect(0,0,canvas.width,canvas.height)
+        if(!options.noRedraw){
+            context.fillStyle = "#000000"
+            context.fillRect(0,0,canvas.width,canvas.height)
+        }
+    }
+    if(typeof options.inputElements!==undefined){
+        options.inputElements.forEach(([element,input])=>{
+            if(input.type=="slider"){
+                inputValues[input.id] = element.value
+            }
+            if(input.type=="text"){
+                inputValues[input.id] = element.value
+                if(input.id=="color"){
+                    let val = element.value
+                    if(element.value.length==4){
+                        let c = element.value.slice(1)
+                        val = "#"+c[0]+c[0]+c[1]+c[1]+c[2]+c[2]
+                    }
+                    if(val.length!=7||val[0]!="#"){
+                        let curr = options.defaults?.[inputs[i].name]||options.DEFAULT_COLOR
+                        element.value = val = curr
+                    }
+                    inputValues[input.name??"color"] = toNum(toArr(val))
+                }
+            }
+        })
+    }
 }
 let addEventLoop = ()=>{
     let lastTime = Date.now()
