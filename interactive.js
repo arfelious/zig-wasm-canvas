@@ -106,6 +106,7 @@ let createInteractive = (parent=document.body,options,wasmOptions)=>{
         container.appendChild(canvas)
         res.push(canvas)
     }
+    let prevent = [...res]
     parent.appendChild(container)
     let state = {isPlaying:false}
     if(options.isWasm){
@@ -132,13 +133,8 @@ let createInteractive = (parent=document.body,options,wasmOptions)=>{
         state.isPlaying=!state.isPlaying
         playButton.innerText=state.isPlaying?'Pause':'Play'
     }
+    
     container.appendChild(playButton)
-    container.appendChild(inputsContainer)
-    let element = document.querySelector('.interactive-input-container');
-    let defaultInputsContainerHeight = window.getComputedStyle(element).getPropertyValue('max-height');
-    optionsButton.onclick=()=>{
-        inputsContainer.style.height=inputsContainer.style.height==defaultInputsContainerHeight?'0px':defaultInputsContainerHeight
-    }
     if(options.title){
         let title = document.createElement('div')
         title.classList.add('interactive-title')
@@ -146,13 +142,32 @@ let createInteractive = (parent=document.body,options,wasmOptions)=>{
         container.appendChild(title)
     }
     options.inputs = options.inputs||[]
+    
     let inputs = createInputs(options.inputs,res)
+    let restartButton
+    let foundRestart = inputs.find(e=>e[1].id=="restart")
+    if(foundRestart){
+        restartButton = foundRestart[0]
+        restartButton.classList.remove('interactive-button')
+        prevent.push(restartButton)
+    }else{
+        restartButton = document.createElement('button')
+        restartButton.disabled=true
+    }
+    restartButton.classList.add('interactive-restart-button')
+    container.appendChild(restartButton)
+    container.appendChild(inputsContainer)
+    let element = document.querySelector('.interactive-input-container');
+    let defaultInputsContainerHeight = window.getComputedStyle(element).getPropertyValue('max-height');
+    optionsButton.onclick=()=>{
+        inputsContainer.style.height=inputsContainer.style.height==defaultInputsContainerHeight?'0px':defaultInputsContainerHeight
+    }
     options.inputElements = inputs
     for(let key in inputs){
         if(inputs[key][2]){
             inputsContainer.appendChild(inputs[key][2])
         }
-        if(!res.includes(inputs[key][0])){
+        if(!prevent.includes(inputs[key][0])){
             inputsContainer.appendChild(inputs[key][0])
         }
     }
